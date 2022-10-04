@@ -90,20 +90,32 @@ class ClsDb(object):
         if month != '':
             sql_str = """SELECT
                          concentrat_title as 'Концентрат',
-                         month_title as 'Месяц',
                          ferum as 'Железо',
                          cremnium as 'Кремний',
                          aluminium as 'Алюминий',
                          calcium as 'Кальций',
                          sera as 'Сера'
                          FROM lab_info
-                         WHERE month_title=%s AND user_id=%s
-                         ORDER BY month_title, 
-                         concentrat_title;""" % (month, user_id)
+                         WHERE month_title=%s AND user_id=%s                         
+                         ORDER BY concentrat_title;""" % (month, user_id)
             self.cursor.execute(sql_str)
             pre_result = pd.DataFrame(self.cursor.fetchall()) # загружаем результат запроса в DataFrame
-            result = pre_result.groupby(['Концентрат']) # группируем по Концентрату
-            result = result.agg([np.mean, np.min, np.max]) # вычисляем аггрегирующие функции
+            if pre_result.shape[0] !=0:
+                result = pre_result.groupby(['Концентрат']) # группируем по Концентрату
+                result = result.agg([np.mean, np.min, np.max]) # вычисляем аггрегирующие функции
+            else:
+                # если в БД ещё нет для авторизированного пользователя
+                # никаких записей о содержании веществ в железорудном концентрате,
+                # то выводим пустой Dataframe:
+                dt_for_df = {'Концентрат': '',
+                             'Месяц': '',
+                             'Железо': '',
+                             'Кремний': '',
+                             'Алюминий': '',
+                             'Кальций': '',
+                             'Сера': ''
+                             }
+                result = pd.DataFrame(dt_for_df, index=['0'])
         else:
             sql_str = """SELECT
                          concentrat_title as 'Концентрат',
