@@ -3,7 +3,7 @@ import pymysql
 import numpy as np
 
 class ClsDb(object):
-    dialect= 'MYSQL'
+    dialect = 'MYSQL'
     driver = 'MySQL-Python'
     username = 'root'
     password = 'Ybrnjrhjvtyfc_2022'
@@ -11,15 +11,13 @@ class ClsDb(object):
     port = 3306
     database = 'TestDB'
 
-    def __init__(self):
-        # Создаём соединение с БД, работающей в контейнере docker:
-        self.connection = pymysql.connect(host= self.host,
-                                          port= self.port,
-                                          user= self.username,
-                                          password= self.password,
-                                          database= self.database,
-                                          cursorclass= pymysql.cursors.DictCursor)
-        self.cursor = self.connection.cursor()
+    def get_new_connection_to_db(self):
+        return pymysql.connect(host=self.host,
+                               port=self.port,
+                               user=self.username,
+                               password=self.password,
+                               database=self.database,
+                               cursorclass=pymysql.cursors.DictCursor)
 
     def login(self, lg, ps):
         """
@@ -30,17 +28,21 @@ class ClsDb(object):
         :param ps: пароль
         :return:
         """
+        conn = self.get_new_connection_to_db()
+        cur = conn.cursor()
         lg = chr(34) + lg + chr(34)
         ps = chr(34) + ps + chr(34)
         sql = 'SELECT * FROM Users WHERE user_name=%s and user_password=%s;' % (lg, ps)
-        self.cursor.execute(sql)
-        result = pd.DataFrame(self.cursor.fetchall())
+        cur.execute(sql)
+        result = pd.DataFrame(cur.fetchall())
+        cur.close()
+        conn.close()
 
         if len(result.index) == 0:
             # не найден пользователь с такими именем и паролем
             return '{"":""}'
         else:
-            return result.to_json() # ответ - текстовая строка в формате JSON, т.е. '{a:b}'
+            return result.to_json()  # ответ - текстовая строка в формате JSON, т.е. '{a:b}'
 
     def insert_into(self, user_id, dic_of_lab):
         """
@@ -50,29 +52,37 @@ class ClsDb(object):
         в железорудном концентрате
         :return:
         """
-        concentrat_title = dic_of_lab['concentrat_title'] # наименование концентрата
+        conn = self.get_new_connection_to_db()
+        cur = conn.cursor()
+        concentrat_title = dic_of_lab['concentrat_title']  # наименование концентрата
         concentrat_title = chr(34) + concentrat_title + chr(34)
 
         month = dic_of_lab['month']  # месяц внесения данных
         month = chr(34) + month + chr(34)
 
-        fer = dic_of_lab['fer']  # содержание железа
-        crmn = dic_of_lab['crmn']  # содержание кремния
-        allum = dic_of_lab['allum']  # содержание аллюминия
-        clm = dic_of_lab['clm']  # содержание кальция
-        sr = dic_of_lab['sr']  # содержание серы
+        fer = dic_of_lab['fer'].replace(',', '.')  # содержание железа
+        crmn = dic_of_lab['crmn'].replace(',', '.')  # содержание кремния
+        alum = dic_of_lab['alum'].replace(',', '.')  # содержание аллюминия
+        clm = dic_of_lab['clm'].replace(',', '.')  # содержание кальция
+        sr = dic_of_lab['sr'].replace(',', '.')  # содержание серы
 
-        sql_str = 'INSERT INTO lab_info VALUES (Null, %s, %s, %s, %s, %s, %s, %s, %s);' % \
-                  (user_id, concentrat_title, month, fer, crmn, allum, clm, sr)
+        sql_str = """INSERT INTO lab_info VALUES (Null, %s, %s, %s, %s, %s, %s, %s, %s);""" % \
+                  (user_id, concentrat_title, month, fer, crmn, alum, clm, sr)
 
-        self.cursor.execute(sql_str) # выполняем запрос на добавление данных в таблицу
-        self.connection.commit() # применяем внесённые а БД изменения
+        response = cur.execute(sql_str)  # выполняем запрос на получение всех данных из таблицы lab_info
+        conn.commit()
+        cur.close()
+        conn.close()
 
-        sql_str = 'SELECT * FROM lab_info;'
-        self.cursor.execute(sql_str) # выполняем запрос на получение всех данных из таблицы lab_info
-        result = pd.DataFrame(self.cursor.fetchall()) # результат запроса записываем в DataFrame
+        conn = self.get_new_connection_to_db()
+        cur = conn.cursor()
+        sql_new = 'SELECT * FROM lab_info;'
+        response2 = cur.execute(sql_new)
+        result = pd.DataFrame(cur.fetchall())  # результат запроса записываем в DataFrame
+        cur.close()
+        conn.close()
 
-        return result.to_json() # ответ - текстовая строка в формате JSON, т.е. '{a:b}'
+        return result.to_json()  # ответ - текстовая строка в формате JSON, т.е. '{a:b}'
 
     def get_info_for_report(self, user_id, month=''):
         """
@@ -98,11 +108,17 @@ class ClsDb(object):
                          FROM lab_info
                          WHERE month_title=%s AND user_id=%s                         
                          ORDER BY concentrat_title;""" % (month, user_id)
-            self.cursor.execute(sql_str)
-            pre_result = pd.DataFrame(self.cursor.fetchall()) # загружаем результат запроса в DataFrame
-            if pre_result.shape[0] !=0:
-                result = pre_result.groupby(['Концентрат']) # группируем по Концентрату
-                result = result.agg([np.mean, np.min, np.max]) # вычисляем аггрегирующие функции
+            conn = self.get_new_connection_to_db()
+            cur = conn.cursor()
+            cur.execute(sql_str)
+            pre_result = pd.DataFrame(cur.fetchall())  # загружаем результат запроса в DataFrame
+            cur.close()
+            conn.close()
+
+            if pre_result.shape[0] != 0:
+                pre_result = pre_result.groupby(['Концентрат'])  # группируем по Концентрату
+                pre_result = pre_result.agg([np.mean, np.min, np.max])  # вычисляем аггрегирующие функции
+                result = pre_result.to_json()
             else:
                 # если в БД ещё нет для авторизированного пользователя
                 # никаких записей о содержании веществ в железорудном концентрате,
@@ -115,7 +131,10 @@ class ClsDb(object):
                              'Кальций': '',
                              'Сера': ''
                              }
-                result = pd.DataFrame(dt_for_df, index=['0'])
+                pre_result = pd.DataFrame(dt_for_df, index=['0'])
+                # преобразуем DataFrame в текстовую строку в формате,
+                # соответствующем JSON:
+                result = pre_result.to_json()
         else:
             sql_str = """SELECT
                          concentrat_title as 'Концентрат',
@@ -129,7 +148,15 @@ class ClsDb(object):
                          WHERE user_id=%s
                          ORDER BY month_title, 
                          concentrat_title;""" % user_id
-            self.cursor.execute(sql_str)
-            result = pd.DataFrame(self.cursor.fetchall())
-
-        return result.to_json()  # ответ - текстовая строка в формате JSON, т.е. '{a:b}'
+            conn = self.get_new_connection_to_db()
+            cur = conn.cursor()
+            cur.execute(sql_str)
+            pre_result = pd.DataFrame(cur.fetchall())
+            cur.close()
+            conn.close()
+            # преобразуем DataFrame в текстовую строку в формате,
+            # соответствующем JSON:
+            result = pre_result.to_json()
+        # текстовая строка в формате,
+        # соответствующем JSON:
+        return result
