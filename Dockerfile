@@ -9,6 +9,7 @@ COPY . /
 RUN pip install cryptography
 RUN pip install -r requirements.txt
 RUN pip install waitress
+RUN pip install flask_cors
 
 EXPOSE 8080
 

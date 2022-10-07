@@ -3,6 +3,7 @@ from app_server.db_scripts.cls_db import ClsDb
 import json
 from flask.sessions import SecureCookieSession
 from flask_cors import CORS
+from waitress import serve
 
 app = Flask(__name__)  # запускем приложение как одиночный модуль
 # Для реализации защиты от атак, основанных на подделке межсайтовых запросов
@@ -51,6 +52,7 @@ def login():
             # пользователь найден - возвращаем результат
             user_id_found = result['idUsers']['0']
             sess['user_id'] = user_id_found  # сохраняем для дальнейшего использования
+            sess['user_name'] = result['user_name']['0']
             if not sess.modified:
                 sess.modified = True
             return jsonify(user_id_found)
@@ -69,6 +71,7 @@ def logout():
     """
     if 'user_id' in sess:
         sess.pop('user_id', None)
+        sess.pop('user_name', None)
 
     return {'': ''}
 
@@ -116,14 +119,23 @@ def display():
     Вывод всех записей в БД из лаб. информации для текущего пользователя
     :return:
     """
-    if 'user_id' in sess:
-        user_id = sess['user_id']
-        result = db_conn.get_info_for_report(user_id=user_id)
-        return result
+    args_from_request = json.loads(request.get_json())
+
+    if 'user_name' in args_from_request:
+        user_name_from_args = args_from_request['user_name']
+    if 'user_id' in sess and 'user_name' in sess:
+        if user_name_from_args == sess['user_name']:
+            user_id = sess['user_id']
+            result = db_conn.get_info_for_report(user_id=user_id)
+            return result
+        else:
+            result = {'error': 'Авторизируйтесь для получения доступа к этому разделу.'}
+            return jsonify(result)
     else:
         result = {'error': 'Авторизируйтесь для получения доступа к этому разделу.'}
         return jsonify(result)
 
 
 if __name__ == '__main__':
-    app.run(debug=False, host='0.0.0.0', port=3002)
+    # app.run(debug=False, host='0.0.0.0', port=8080)
+    serve(app, listen='*:8080')
